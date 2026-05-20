@@ -32,7 +32,7 @@ import numpy as np
 class DataGenerator(ABC):
     """Abstract base for all point-cloud generators."""
 
-# : Subclasses register themselves here via __init_subclass__
+    #Subclasses register themselves here via __init_subclass__
     _registry: dict[str, type["DataGenerator"]] = {}
 
     def __init_subclass__(cls, name: str, **kwargs: object) -> None:
@@ -53,7 +53,7 @@ class DataGenerator(ABC):
 
     @property
     def name(self) -> str:
-        return self._dist_name  # type: ignore[attr-defined]
+        return self._dist_name
 
 
 class UniformGenerator(DataGenerator, name="uniform"):
@@ -74,8 +74,9 @@ class ClusteredGenerator(DataGenerator, name="clustered"):
         self.cluster_std = cluster_std
 
     def generate(self, n: int, dims: int, rng: np.random.Generator) -> np.ndarray:
-#All data lives in[0, 1] ^ d.Keep centroids at least 2σ from each wall
-#so blobs aren't badly clipped — with default std=0.05 this gives [0.1, 0.9].
+        #All data lives in[0, 1] ^ d.Keep centroids at least 2σ from each wall
+        #so blobs aren't badly clipped — with default std=0.05 this gives [0.1, 0.9]
+        
         margin = 2.0 * self.cluster_std
         if margin >= 0.5:
             raise ValueError(
@@ -156,7 +157,7 @@ def build_parser() -> argparse.ArgumentParser:
             "relative to the project root."
         ),
     )
-#Clustered - only knobs
+    #Clustered - only knobs
     p.add_argument(
         "--n-clusters",
         type=int,
@@ -171,7 +172,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="σ",
         help="Std dev of each Gaussian blob (default: 0.05 = 5%% of bbox).",
     )
-#Skewed - only knob
+    #Skewed - only knob
     p.add_argument(
         "--skew-fraction",
         type=float,
