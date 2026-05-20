@@ -16,8 +16,13 @@ void ExhaustiveKNN::build(PointsPtr aPoints)
 
 Neighbours ExhaustiveKNN::query(const Point &aQ, size_t aK) const
 {
-	assert(points && "call build() before query()");
-	assert(aK > 0);
+	if (!points)
+		throw std::runtime_error(
+			"ExhaustiveKNN::query: call build() before query()");
+
+	if (aK == 0)
+		throw std::invalid_argument(
+			"ExhaustiveKNN::query: call for positive number of neighbours");
 
 	// Distances stored in the heap are *squared* L2 to avoid sqrt on every
 	// comparison.  We take sqrt only on the k final winners below.
@@ -43,6 +48,6 @@ Neighbours ExhaustiveKNN::query(const Point &aQ, size_t aK) const
 		n.dist = std::sqrt(n.dist);
 		result.push_back(n);
 	}
-	std::sort(result.begin(), result.end()); // uses Neighbour::operator<
+	std::sort(result.begin(), result.end());
 	return result;
 }
