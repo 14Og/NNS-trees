@@ -3,11 +3,11 @@
 
 #include "generic/functions.hh"
 #include "generic/index.hh"
+#include "generic/logger.hh"
 
 #include <algorithm>
 #include <cmath>
 #include <queue>
-#include <stdexcept>
 
 // Flat linear-scan KNN.
 //
@@ -19,14 +19,20 @@
 // is O(log k).  Final results are returned sorted ascending by L2 distance.
 class ExhaustiveKNN : public NNSIndex {
 public:
-	void build(PointsPtr aPoints) override
+	ExhaustiveKNN()									= default;
+	ExhaustiveKNN(const ExhaustiveKNN &)			= delete;
+	ExhaustiveKNN &operator=(const ExhaustiveKNN &) = delete;
+	ExhaustiveKNN(ExhaustiveKNN &&)					= delete;
+	ExhaustiveKNN &operator=(ExhaustiveKNN &&)		= delete;
+
+	void build(PointsPtr aPoints) final
 	{
 		if (!aPoints || aPoints->empty())
 			throw std::invalid_argument("ExhaustiveKNN::build: empty dataset");
 		points = std::move(aPoints);
 	}
 
-	QueryResult query(const Point &aQ, size_t aK) const override
+	QueryResult query(const Point &aQ, size_t aK) const final
 	{
 		if (!points)
 			throw std::runtime_error(
@@ -38,16 +44,21 @@ public:
 
 		// Distances stored in the heap are *squared* L2 to avoid sqrt on every
 		// comparison.  We take sqrt only on the k final winners below.
+		Logger::queryPoint(aQ);
 		std::priority_queue<Neighbour> heap;
 
 		for (size_t i = 0; i < points->size(); ++i) {
 			auto norm = L2norm(aQ, (*points)[i]);
+			Logger::visit(i);
 
 			if (heap.size() < aK) {
 				heap.push({norm, i});
+				Logger::accept(i, heap.top().dist);
 			} else if (norm < heap.top().dist) {
+				Logger::evict(heap.top().idx, heap.top().dist);
 				heap.pop();
 				heap.push({norm, i});
+				Logger::accept(i, heap.top().dist);
 			}
 		}
 
@@ -61,6 +72,7 @@ public:
 			neighbours.push_back(n);
 		}
 		std::sort(neighbours.begin(), neighbours.end());
+		for (const auto &n : neighbours) Logger::result(n.idx, n.dist);
 		return {std::move(neighbours), points->size()};
 	}
 };

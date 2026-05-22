@@ -1,10 +1,17 @@
-add_executable(benchmark
-    benchmark/benchmark.cc
-    # quadtree/quadtree.cc  — header-only, no .cc needed
-    # kdtree/kdtree.cc      — header-only, no .cc needed
+set(COMMON_DEFS
+    DATA_DIR="${PROJECT_SOURCE_DIR}/data"
+    STATS_DIR="${PROJECT_SOURCE_DIR}/assets/output/stats"
 )
 
-
+add_executable(benchmark
+    benchmark/benchmark.cc
+)
 target_include_directories(benchmark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(benchmark PRIVATE DATA_DIR="${PROJECT_SOURCE_DIR}/data")
-target_compile_definitions(benchmark PRIVATE OUT_DIR="${PROJECT_SOURCE_DIR}/assets/output")
+target_compile_definitions(benchmark PRIVATE ${COMMON_DEFS})
+set_target_properties(benchmark PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR})
+
+# ENABLE_LOGGING is injected by the `logging` CMake preset.
+# When set, Logger::log() emits events to stdout alongside normal stats output.
+if(ENABLE_LOGGING)
+    target_compile_definitions(benchmark PRIVATE ENABLE_LOGGING)
+endif()

@@ -1,6 +1,25 @@
 # NNS-Trees — Project Status
 
-> Branch `dev-kolya` · 2026-05-21
+> Branch `dev-kolya` · 2026-05-22
+
+---
+
+## Development Setup
+
+### Git hooks (one-time, per clone)
+
+Pre-commit hooks for auto-formatting are tracked in [`hooks/`](hooks/).
+After cloning, activate them with:
+
+```bash
+git config core.hooksPath hooks
+```
+
+The hook runs automatically on every `git commit`:
+- **C/C++** (`.cc .cpp .cxx .hh .h .hpp`) — `clang-format` using [`.clang-format`](.clang-format)
+- **Python** (`.py`) — `isort` then `black`
+
+Required tools: `clang-format` (system), `black` and `isort` via `uv tool install black isort`.
 
 ---
 
@@ -38,24 +57,28 @@ KD-Tree dimensionality-degradation sweep.
 
 ## 2. Baseline Algorithm — Exhaustive KNN
 
-**Class:** `ExhaustiveKNN` ([source/exhaustive_knn/exhaustive_knn.hh](source/exhaustive_knn/exhaustive_knn.hh),
-[source/exhaustive_knn/exhaustive_knn.cc](source/exhaustive_knn/exhaustive_knn.cc))
+**Class:** `ExhaustiveKNN` ([source/exhaustive_knn/exhaustive_knn.hh](source/exhaustive_knn/exhaustive_knn.hh)) — header-only.
 
-**Interface** (shared by all future NNS implementations):
+**Interface** (shared by all NNS implementations, [source/generic/index.hh](source/generic/index.hh)):
 
 ```cpp
-class NNSIndex {                              // source/generic/index.hh
-    virtual void       build(PointsPtr)  = 0; // ingest dataset
-    virtual Neighbours query(Point, k)   = 0; // return k nearest neighbours
+class NNSIndex {
+    virtual void        build(PointsPtr aPoints) = 0;
+    virtual QueryResult query(const Point &aQ, size_t aK) const = 0;
 protected:
     PointsPtr points;
 };
+
+struct QueryResult {
+    Neighbours neighbours;   // sorted ascending by L2 distance
+    size_t     nodesVisited;
+};
 ```
 
-**Core types** (`source/generic/types.hh`):
+**Core types** ([source/generic/types.hh](source/generic/types.hh)):
 - `Point = std::vector<float>` — a single d-dimensional point
 - `Points = std::vector<Point>`, owned via `shared_ptr<Points>`
-- `Neighbour { float dist; size_t idx; }` — one result entry
+- `Neighbour { float dist; size_t idx; }` — one result entry (max-heap ordered by dist)
 
 **Algorithm:**
 
@@ -68,58 +91,89 @@ protected:
      L2, and sorted ascending before returning.
 
 `ExhaustiveKNN` provides exact answers and is the correctness reference against which
-QuadTree and KD-Tree results will be verified.
+KD-Tree and QuadTree results will be verified.
 
 ---
 
-## 3. Benchmark Pipeline — Data Handling
+## 3. Benchmark Pipeline
 
-The benchmark harness lives in [source/benchmark/benchmark.cc](source/benchmark/benchmark.cc)
-(currently a stub `main`). The planned design handles multiple datasets and configurations
-by **parsing CSV files at runtime**:
+The benchmark harness is in [source/benchmark/benchmark.cc](source/benchmark/benchmark.cc).
 
 ```
-data/<dist>_n<n>_d<dims>_s<seed>.csv  →  benchmark binary  →  results (stdout / CSV)
+data/<dist>_n<n>_d<dims>_s<seed>.csv  →  benchmark binary  →  assets/output/
 ```
 
-**Loading flow (to be implemented):**
+**Usage:**
 
-1. The benchmark executable accepts one or more CSV file paths as arguments (or a glob pattern).
-2. Each file is read row-by-row; each row becomes a `Point` (splitting on `,` and parsing floats).
-3. The resulting `Points` vector is wrapped in a `shared_ptr` and passed to each
-   `NNSIndex::build()` call — no algorithm-specific parsing or preprocessing is needed.
-4. Dimensionality `d` is inferred from the column count of the first row; it is uniform
-   across all rows by construction (the generator guarantees this).
-5. Query points are sampled independently from the same distribution (or read from a
-   separate query CSV) so they are not in the index.
+```bash
+./build/release/benchmark --data <filename> --algo <name> [options]
 
-**Configuration axes swept per dataset:**
+  --data <filename>     CSV filename relative to DATA_DIR
+  --algo <name>         Algorithm name (exhaustive, kdtree, ...)
+  --k <int>             Number of neighbours (default: 5)
+  --iters <int>         Number of query iterations (default: 100)
+  --noise <float>       Gaussian noise added to query points (default: 0.01)
+  --seed <int>          RNG seed (default: 42)
+  --save-neighbours     Also write per-query neighbour CSV
+```
 
-| Axis | Values |
+**Query points** are sampled by picking a random dataset point and adding per-dimension
+Gaussian noise $\mathcal{N}(0, \texttt{noise})$, clamped to $[0, 1]^d$.
+
+**Outputs** (written to `assets/output/`):
+
+| File | Contents |
 |---|---|
-| Dataset size $n$ | Varied via different input files |
-| Dimensionality $d$ | Encoded in the filename; detected at load time |
-| Number of neighbours $k$ | Command-line flag |
-| Algorithm | Compile-time or runtime selection |
+| `<algo>_<stem>_stats.csv` | Build time, mean/std query time, mean/std nodes visited |
+| `<algo>_<stem>_neighbours.csv` | Query point (idx = −1) followed by k neighbours per iteration |
+| `logs/<algo>_<stem>.log` | Full event log — only produced under the `logging` CMake preset |
 
-**Outputs recorded:** average query time, build time, nodes visited per query (standard
-deviation included). These will be written as CSV rows for downstream plotting in
-`visualize.py` / `experiments.ipynb`.
-
-Because the CSV schema is fixed (headerless, float32 rows, delimiter `,`) and the
-dimensionality is self-describing, **adding a new distribution or dataset size requires
-only running `data_gen.py` with the desired arguments** — the benchmark binary needs no
-changes.
+Because the CSV schema is fixed (headerless, float32 rows) and dimensionality is
+self-describing, **adding a new dataset requires only running `data_gen.py`** — the
+benchmark binary needs no changes.
 
 ---
 
-## Current Build Status
+## Current Status
 
-| Component | Status |
-|---|---|
-| `ExhaustiveKNN` | ✅ Implemented & compiles |
-| `QuadTree` | 🔲 Stubbed in CMakeLists (commented out) |
-| `KD-Tree` | 🔲 Stubbed in CMakeLists (commented out) |
-| `benchmark` harness | 🔲 Stub (`main` returns 0) |
-| Data generator | ✅ Fully implemented |
-| Visualiser | ✅ Scatter-plot scope done; benchmark plots TBD |
+### Algorithms
+
+| Algorithm | Build | Query | Notes |
+|---|---|---|---|
+| `ExhaustiveKNN` | ✅ | ✅ | Linear scan, max-heap; correctness reference |
+| `KDTree` | ✅ | ✅ | Median split via `nth_element`, pruning by hyperplane distance |
+| `QuadTree` | 🔲 | 🔲 | Not yet started |
+
+### Infrastructure
+
+| Component | Status | Notes |
+|---|---|---|
+| `NNSIndex` interface | ✅ | `build(PointsPtr)` + `query(Point, k) → QueryResult` |
+| `Benchmark` harness | ✅ | Timed build/query, CSV stats + neighbours output |
+| Compile-time `Logger` | ✅ | Zero overhead in `release`; enabled via `logging` CMake preset |
+| CMake presets | ✅ | `release`, `debug`, `logging` — separate `build/<preset>/` dirs |
+| Data generator | ✅ | Uniform / Clustered / Skewed, arbitrary `n`/`d`/seed |
+| Git hooks | ✅ | `clang-format` + `black` + `isort` on commit (`hooks/pre-commit`) |
+
+### Visualiser ([source/visualize.py](source/visualize.py))
+
+| Feature | Status | Notes |
+|---|---|---|
+| Dataset scatter plots | ✅ | `scatter` subcommand, multi-file side-by-side |
+| KD-Tree build animation | ✅ | Partition lines coloured by split axis (red = x, blue = y) |
+| KD-Tree query animation | ✅ | Visited / accepted / evicted / result point states; acceptance radius circle; pruned cells shaded |
+| Exhaustive KNN query animation | ✅ | Same event model as KD-Tree query |
+| Save to `assets/figures/` | ✅ | `--save` flag; filenames derived from log stem + stage |
+| QuadTree animation | 🔲 | Pending QuadTree implementation |
+
+#### KD-Tree Build — uniform n=200 d=2
+
+![KD-Tree Build](assets/figures/kdtree_uniform_n200_d2_s42_build.gif)
+
+#### KD-Tree Query — uniform n=200 d=2
+
+![KD-Tree Query](assets/figures/kdtree_uniform_n200_d2_s42_query.gif)
+
+#### Exhaustive KNN Query — uniform n=200 d=2
+
+![Exhaustive KNN Query](assets/figures/exhaustive_uniform_n200_d2_s42_query.gif)

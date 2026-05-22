@@ -6,10 +6,12 @@
 #include "arg_helper.hh"
 #include "benchmark.hh"
 #include "dataloader.hh"
+#include "generic/logger.hh"
 #include "exhaustive_knn/exhaustive_knn.hh"
+#include "kd_tree/kd_tree.hh"
 
 static inline std::filesystem::path dataDir{DATA_DIR};
-static inline std::filesystem::path outDir{OUT_DIR};
+static inline std::filesystem::path outDir{STATS_DIR};
 
 static void printUsage()
 {
@@ -25,7 +27,7 @@ static void printUsage()
 		   "  --save-neighbours    also write neighbours CSV for "
 		   "visualisation\n"
 		   "\n"
-		   "Output (in OUT_DIR): <algo>_<stem>_stats.csv, "
+		   "Output (in STATS_DIR): <algo>_<stem>_stats.csv, "
 		   "<algo>_<stem>_neighbours.csv\n";
 }
 
@@ -51,7 +53,7 @@ int main(int argc, char **argv)
 	uint64_t seed  = std::stoull(std::string(getArg(args, "--seed", "42")));
 	bool saveNeigh = hasFlag(args, "--save-neighbours");
 
-	// Derive output paths: OUT_DIR/<algo>_<stem>_stats.csv
+	// Derive output paths: STATS_DIR/<algo>_<stem>_stats.csv
 	std::filesystem::path dataPath = dataDir / dataFile;
 	std::string stem			   = dataPath.stem().string();
 	std::string prefix			   = std::string(algo) + "_" + stem;
@@ -60,11 +62,15 @@ int main(int argc, char **argv)
 	auto statsPath = outDir / (prefix + "_stats.csv");
 	auto neighPath = outDir / (prefix + "_neighbours.csv");
 
+	if constexpr (Logger::kEnabled)
+		Logger::init(outDir / "logs" / (prefix + ".log"));
+
 	// Instantiate index
 	std::unique_ptr<NNSIndex> index;
 	if (algo == "exhaustive")
 		index = std::make_unique<ExhaustiveKNN>();
-	// else if (algo == "kdtree")   index = std::make_unique<KDTree>();
+	else if (algo == "kdtree")
+		index = std::make_unique<KDTree>();
 	// else if (algo == "quadtree") index = std::make_unique<QuadTree>();
 	else {
 		std::cerr << "Unknown algo: " << algo << '\n';

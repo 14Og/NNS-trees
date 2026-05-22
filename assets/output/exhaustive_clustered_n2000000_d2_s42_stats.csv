@@ -1,2 +1,0 @@
-algo,n,d,k,iters,build_ms,query_mean_us,query_std_us,nodes_mean,nodes_std
-exhaustive,2000000,2,100,100,0.000374,10104.4,103.132,2e+06,0

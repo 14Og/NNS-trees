@@ -1,0 +1,42 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "base",
+            "hidden": true,
+            "generator": "Unix Makefiles"
+        },
+        {
+            "name": "release",
+            "displayName": "Release",
+            "description": "Optimised build, logging stripped at compile time.",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "description": "Debug symbols + ENABLE_LOGGING for local development.",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/debug",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "ENABLE_LOGGING": "ON"
+            }
+        },
+        {
+            "name": "logging",
+            "displayName": "Logging",
+            "description": "Release build with ENABLE_LOGGING — emits build/query events to stdout. Use --iters 1 to get a single-query log for visualisation.",
+            "inherits": "base",
+            "binaryDir": "${sourceDir}/build/logging",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "ENABLE_LOGGING": "ON"
+            }
+        }
+    ]
+}

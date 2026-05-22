@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# pre-commit: run clang-format on staged C/C++ files and black+isort on staged
+# Python files.  Formatting is applied in-place and the changes are re-staged
+# so the commit always contains clean code.
+
+set -euo pipefail
+
+# ── helpers ─────────────────────────────────────────────────────────────────
+
+need() {
+    if ! command -v "$1" &>/dev/null; then
+        echo "pre-commit: '$1' not found — install it and try again." >&2
+        exit 1
+    fi
+}
+
+# ── collect staged files ─────────────────────────────────────────────────────
+
+mapfile -t CPP_FILES  < <(git diff --cached --name-only --diff-filter=ACM \
+                          | grep -E '\.(cc|cpp|cxx|hh|h|hpp)$' || true)
+mapfile -t PY_FILES   < <(git diff --cached --name-only --diff-filter=ACM \
+                          | grep -E '\.py$' || true)
+
+# ── C++ — clang-format ───────────────────────────────────────────────────────
+
+if [[ ${#CPP_FILES[@]} -gt 0 ]]; then
+    need clang-format
+    echo "pre-commit: clang-format (${#CPP_FILES[@]} file(s))"
+    clang-format -i "${CPP_FILES[@]}"
+    git add "${CPP_FILES[@]}"
+fi
+
+# ── Python — isort + black ───────────────────────────────────────────────────
+
+if [[ ${#PY_FILES[@]} -gt 0 ]]; then
+    need isort
+    need black
+    echo "pre-commit: isort (${#PY_FILES[@]} file(s))"
+    isort "${PY_FILES[@]}"
+    echo "pre-commit: black (${#PY_FILES[@]} file(s))"
+    black "${PY_FILES[@]}"
+    git add "${PY_FILES[@]}"
+fi
