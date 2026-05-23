@@ -136,7 +136,7 @@ source/
 │   ├── types.hh          # Point, Points, Neighbour, QueryResult
 │   ├── index.hh          # NNSIndex abstract base class
 │   ├── functions.hh      # L2norm (squared, avoids sqrt on every comparison)
-│   └── logger.hh         # Compile-time Logger (zero cost without ENABLE_LOGGING)
+│   └── logger.hh         # Logger (zero cost without ENABLE_LOGGING)
 ├── exhaustive_knn/
 │   └── exhaustive_knn.hh # Header-only ExhaustiveKNN
 ├── kd_tree/
