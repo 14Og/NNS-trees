@@ -37,6 +37,8 @@ struct Logger {
 	{
 		if constexpr (kEnabled)
 			(file() << ... << aArgs) << '\n';
+		else
+			((void)aArgs, ...);
 	}
 
 	// Build events.

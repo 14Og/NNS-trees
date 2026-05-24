@@ -9,6 +9,7 @@
 #include "generic/logger.hh"
 #include "exhaustive_knn/exhaustive_knn.hh"
 #include "kd_tree/kd_tree.hh"
+#include "quad_tree/quad_tree.hh"
 
 static inline std::filesystem::path dataDir{DATA_DIR};
 static inline std::filesystem::path outDir{STATS_DIR};
@@ -71,7 +72,8 @@ int main(int argc, char **argv)
 		index = std::make_unique<ExhaustiveKNN>();
 	else if (algo == "kdtree")
 		index = std::make_unique<KDTree>();
-	// else if (algo == "quadtree") index = std::make_unique<QuadTree>();
+	else if (algo == "quadtree")
+		index = std::make_unique<QuadTree>();
 	else {
 		std::cerr << "Unknown algo: " << algo << '\n';
 		return 1;

@@ -128,7 +128,7 @@ private:
 
 	Points generateQueries() const
 	{
-		std::mt19937 rng(seed);
+		std::mt19937_64 rng(seed);
 		std::uniform_int_distribution<size_t> idxDist(0, points->size() - 1);
 		std::normal_distribution<float> noiseDist(0.0f, noise);
 
