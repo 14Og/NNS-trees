@@ -61,19 +61,23 @@ public:
 		nodesStd	= std(nodesVisited, nodesMean);
 	}
 
-	// Append one row to a stats CSV (writes header if file is new).
-	void writeStats(
-		const std::filesystem::path &aPath, const std::string &aAlgo) const
+	// Append one row to <algo>_<dist>_stats.csv.
+	// Writes the header only when the file is created for the first time,
+	// so repeated runs across different (n, d, seed) fill the same table.
+	void writeStats(const std::filesystem::path &aPath) const
 	{
-		std::ofstream f(aPath);
+		bool isNew = !std::filesystem::exists(aPath)
+			|| std::filesystem::file_size(aPath) == 0;
 
-		f << "algo,n,d,k,iters,"
-			 "build_ms,query_mean_us,query_std_us,"
-			 "nodes_mean,nodes_std\n";
+		std::ofstream f(aPath, std::ios::app);
+		if (isNew)
+			f << "n,d,seed,k,iters,"
+				 "build_ms,query_mean_us,query_std_us,"
+				 "nodes_mean,nodes_std\n";
 
-		f << aAlgo << ',' << points->size() << ',' << points->at(0).size()
-		  << ',' << k << ',' << iters << ',' << buildMs << ',' << queryMeanUs
-		  << ',' << queryStdUs << ',' << nodesMean << ',' << nodesStd << '\n';
+		f << points->size() << ',' << points->at(0).size() << ',' << seed << ','
+		  << k << ',' << iters << ',' << buildMs << ',' << queryMeanUs << ','
+		  << queryStdUs << ',' << nodesMean << ',' << nodesStd << '\n';
 	}
 
 	// Write neighbours of the first query point (for visualisation).

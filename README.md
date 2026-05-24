@@ -1,252 +1,190 @@
 # NNS-Trees
 
-Benchmarking nearest-neighbour search algorithms (Exhaustive KNN, KD-Tree, QuadTree)
-with Python-based animation of build and query traversal.
+> Benchmarking spatial index structures for exact k-nearest-neighbour search —
+> KD-Tree and QuadTree against an exhaustive baseline — with animated build and query traversal.
+
+<p align="center">
+  <img src="assets/figures/kdtree_uniform_n200_d2_s42_build.gif"  width="45%" alt="KD-Tree build"/>
+  <img src="assets/figures/kdtree_uniform_n200_d2_s42_query.gif"  width="45%" alt="KD-Tree query"/>
+</p>
+<p align="center">
+  <img src="assets/figures/quadtree_uniform_n200_d2_s42_build.gif" width="45%" alt="QuadTree build"/>
+  <img src="assets/figures/quadtree_uniform_n200_d2_s42_query.gif" width="45%" alt="QuadTree query"/>
+</p>
+<p align="center"><em>KD-Tree (top) and QuadTree (bottom) — build and query on uniform n=200, d=2</em></p>
 
 ---
 
-## Current Status
+## Overview
 
-### Algorithms
+The project measures how much spatial partitioning helps for exact k-NN as dataset size and
+dimensionality grow. Three algorithms share a common `NNSIndex` interface and are evaluated
+against three point distributions (uniform, clustered, skewed) across n up to 200 000 and
+d up to 30.
 
-| Algorithm | Build | Query | Notes |
-|---|---|---|---|
-| `ExhaustiveKNN` | ✅ | ✅ | Linear scan, max-heap; correctness reference |
-| `KDTree` | ✅ | ✅ | Median split via `nth_element`, pruning by hyperplane distance |
-| `QuadTree` | 🔲 | 🔲 | Not yet started |
+Key findings are captured in two experiments:
 
-### Infrastructure
-
-| Component | Status | Notes |
-|---|---|---|
-| `NNSIndex` interface | ✅ | `build(PointsPtr)` + `query(Point, k) → QueryResult` |
-| `Benchmark` harness | ✅ | Timed build/query, CSV stats + neighbours output |
-| Logger with compile-time switch | ✅ | Zero overhead in `release`; enabled via `logging` CMake preset |
-| CMake presets | ✅ | `release`, `debug`, `logging` — separate `build/<preset>/` dirs |
-| Data generator | ✅ | Uniform / Clustered / Skewed, arbitrary `n`/`d`/seed |
-| Git hooks | ✅ | `clang-format` + `black` + `isort` on commit |
-
-### Visualiser ([source/visualize.py](source/visualize.py))
-
-| Feature | Status | Notes |
-|---|---|---|
-| Dataset scatter plots | ✅ | `scatter` subcommand, multi-file side-by-side |
-| KD-Tree build animation | ✅ | Partition lines coloured by split axis (red = x, blue = y) |
-| KD-Tree query animation | ✅ | Visited / accepted / evicted / result states; acceptance radius circle; pruned cells shaded |
-| Exhaustive KNN query animation | ✅ | Same event model as KD-Tree |
-| Save to `assets/figures/` | ✅ | `--save` flag; filenames derived from log stem + stage |
-| QuadTree animation | 🔲 | Pending QuadTree implementation |
-
-#### KD-Tree Build — uniform n=200 d=2
-
-<img src="assets/figures/kdtree_uniform_n200_d2_s42_build.gif" width="380"/>
-
-#### KD-Tree Query — uniform n=200 d=2
-
-<img src="assets/figures/kdtree_uniform_n200_d2_s42_query.gif" width="380"/>
-
-#### Exhaustive KNN Query — uniform n=200 d=2
-
-<img src="assets/figures/exhaustive_uniform_n200_d2_s42_query.gif" width="380"/>
+- **n-scaling** — both tree structures achieve ~90× speedup over exhaustive at n=200 000 (d=2),
+  visiting ≤ 0.03% of the dataset per query.
+- **d-scaling** — KD-Tree is fastest up to d≈8, then degrades sharply; it is 4× *slower* than
+  exhaustive at d=30 due to the curse of dimensionality.
 
 ---
 
-## Quick Start
+## Implementation
 
-### Prerequisites
-
-| Tool | Purpose |
-|---|---|
-| CMake ≥ 3.20, Make | Build system |
-| GCC / Clang with C++20 | Compiler |
-| Python ≥ 3.12 | Data generation + visualisation |
-| `uv` | Python environment and tool management |
-
-### Python environment
-
-```bash
-uv sync                              # install runtime deps (numpy, matplotlib, scienceplots)
-uv tool install black isort          # formatting tools used by the git hook
-```
-
-### Build
-
-```bash
-# Optimised build (no logging overhead)
-cmake --preset release && cmake --build build/release
-
-# Debug build
-cmake --preset debug && cmake --build build/debug
-
-# Logging build — same optimisation as release but emits event logs
-cmake --preset logging && cmake --build build/logging
-```
-
-### Generate data
-
-```bash
-uv run source/data_gen.py --dist uniform   --n 2000 --dims 2 --seed 42
-uv run source/data_gen.py --dist clustered --n 2000 --dims 2 --seed 42
-uv run source/data_gen.py --dist skewed    --n 2000 --dims 2 --seed 42
-# Output: data/<dist>_n<n>_d<dims>_s<seed>.csv
-```
-
-### Run a benchmark
-
-```bash
-./build/release/benchmark \
-    --data clustered_n2000_d2_s42.csv \
-    --algo kdtree \
-    --k 5 --iters 100
-# Output: assets/output/kdtree_clustered_n2000_d2_s42_stats.csv
-```
-
-### Produce animations
-
-```bash
-# 1. Build with logging enabled
-cmake --preset logging && cmake --build build/logging
-
-# 2. Run benchmark to emit the event log (1 iteration is enough for animation)
-./build/logging/benchmark \
-    --data uniform_n200_d2_s42.csv \
-    --algo kdtree --k 5 --iters 1
-# Log: assets/output/logs/kdtree_uniform_n200_d2_s42.log
-
-# 3. Animate interactively (both build + query)
-uv run source/visualize.py animate \
-    --log  assets/output/logs/kdtree_uniform_n200_d2_s42.log \
-    --data data/uniform_n200_d2_s42.csv
-
-# 4. Save GIFs to assets/figures/
-uv run source/visualize.py animate --save \
-    --log  assets/output/logs/kdtree_uniform_n200_d2_s42.log \
-    --data data/uniform_n200_d2_s42.csv
-```
-
----
-
-## Architecture
-
-### Source layout
+### Structure
 
 ```
 source/
 ├── generic/
 │   ├── types.hh          # Point, Points, Neighbour, QueryResult
-│   ├── index.hh          # NNSIndex abstract base class
-│   ├── functions.hh      # L2norm (squared, avoids sqrt on every comparison)
-│   └── logger.hh         # Logger (zero cost without ENABLE_LOGGING)
+│   ├── index.hh          # NNSIndex abstract base (build + query)
+│   ├── functions.hh      # squared L2 norm
+│   └── logger.hh         # compile-time event logger (zero cost in release)
 ├── exhaustive_knn/
-│   └── exhaustive_knn.hh # Header-only ExhaustiveKNN
+│   └── exhaustive_knn.hh
 ├── kd_tree/
-│   ├── kd_node.hh        # KDNode struct + KDNodePtr
-│   └── kd_tree.hh        # Header-only KDTree
+│   └── kd_tree.hh
+├── quad_tree/
+│   └── quad_tree.hh
 ├── benchmark/
-│   └── benchmark.cc      # Single TU; includes all algorithm headers
-└── visualize.py          # Scatter plots + build/query animations
+│   ├── benchmark.cc      # single TU; CLI entry point
+│   └── benchmark.hh      # timing, stats, neighbours output
+├── data_gen.py           # synthetic dataset generator
+├── visualize.py          # scatter plots + build/query animations
+└── benchmark_plot.py     # result plots from stats CSVs
 ```
 
-### NNSIndex interface
+### Algorithms
 
-Every algorithm inherits from `NNSIndex` ([source/generic/index.hh](source/generic/index.hh))
-and implements two methods:
+All three implement the same interface:
 
 ```cpp
 class NNSIndex {
 public:
     virtual void        build(PointsPtr aPoints) = 0;
     virtual QueryResult query(const Point &aQ, size_t aK) const = 0;
-protected:
-    PointsPtr points;   // shared ownership of the dataset
-};
-
-struct QueryResult {
-    Neighbours neighbours;   // k nearest neighbours, sorted ascending by L2
-    size_t     nodesVisited; // reported in benchmark stats
 };
 ```
 
-Core types ([source/generic/types.hh](source/generic/types.hh)):
+| Algorithm | Split rule | Pruning rule | Dims |
+|:--|:--|:--|:--|
+| `ExhaustiveKNN` | — | none | any |
+| `KDTree` | median of highest-variance axis (`nth_element`) | hyperplane distance > heap worst | any |
+| `QuadTree` | geometric midpoint → 4 equal quadrants | box distance > heap worst | 2 only |
 
-```cpp
-using Point      = std::vector<float>;
-using Points     = std::vector<Point>;
-using PointsPtr  = std::shared_ptr<Points>;
-
-struct Neighbour {
-    float  dist; // squared L2 during search; true L2 in the final result
-    size_t idx;  // index into the original Points array
-    bool operator<(const Neighbour &) const; // max-heap order (largest dist on top)
-};
-```
-
-### Adding a new algorithm (e.g. QuadTree)
-
-1. Create `source/quad_tree/quad_tree.hh` — header-only, include `"generic/index.hh"`.
-2. Inherit from `NNSIndex`, implement `build()` and `query()`.
-3. Call `Logger` methods at the right points (see [source/kd_tree/kd_tree.hh](source/kd_tree/kd_tree.hh) as reference).
-4. Add `#include "quad_tree/quad_tree.hh"` and a `"quadtree"` branch in
-   [source/benchmark/benchmark.cc](source/benchmark/benchmark.cc).
-5. Add `"quadtree"` to `_ALGO_TITLES` in [source/visualize.py](source/visualize.py).
+Both trees visit children in order of increasing box distance.
 
 ### Logger
 
-`Logger` ([source/generic/logger.hh](source/generic/logger.hh)) is a compile-time
-switch — all calls compile to nothing unless the `logging` CMake preset is used (zero overhead in `release`):
+A compile-time–switched event emitter (`ENABLE_LOGGING` CMake flag).
+All calls optimise away in release builds (`if constexpr`).
+The `logging` preset enables it at release optimisation level; `--iters 1` produces
+a single-query log that `visualize.py` turns into a frame-by-frame animation.
 
 ```cpp
-Logger::split(nodeIdx, axis, depth, loBound, hiBound); // build: node created
-Logger::visit(idx);                                     // query: node examined
-Logger::accept(idx, heapWorstDistSq);                   // query: added to heap
-Logger::evict(idx, heapWorstDistSq);                    // query: evicted from heap
-Logger::prune(subtreeRootIdx, hyperplaneDistSq);        // query: subtree pruned
-Logger::result(idx, dist);                              // query: final neighbour
+Logger::splitKD(idx, axis, depth, lo, hi);  // KD-Tree build: new partition line
+Logger::splitQuad(depth, lo, hi);            // QuadTree build: new cross
+Logger::pruneKD(idx, distSq);               // query: subtree skipped
+Logger::pruneQuad(distSq, lo, hi);          // query: quadrant skipped
+Logger::visit(idx);  Logger::accept(...);   Logger::evict(...);
 ```
-
-Call `Logger::init(path)` once before `build()`/`query()` to open the log file.
-The log is consumed by `visualize.py animate` to produce animations.
-
-### Datasets
-
-All datasets are generated in $[0,1]^d$ by [source/data_gen.py](source/data_gen.py):
-
-| Distribution | Description | Stress target |
-|---|---|---|
-| **Uniform** | i.i.d. from $U([0,1]^d)$ | Clean asymptotic baseline |
-| **Clustered** | Gaussian blobs, σ=0.05, clipped to unit box | Spatial-midpoint splits (QuadTree) |
-| **Skewed** | All points in $[0, 0.1]^d$ | Worst-case for midpoint partitioning |
-
-### Benchmark pipeline
-
-```
-data/<stem>.csv  →  benchmark binary  →  assets/output/<algo>_<stem>_stats.csv
-                                     →  assets/output/logs/<algo>_<stem>.log  (logging preset only)
-```
-
-```bash
-./build/release/benchmark --data <stem>.csv --algo <name> [--k 5] [--iters 100]
-                          [--noise 0.01] [--seed 42] [--save-neighbours]
-```
-
-Query points are drawn by sampling a random dataset point and adding
-$\mathcal{N}(0, \texttt{noise})$ per dimension, clamped to $[0,1]^d$.
 
 ---
 
-## Development Setup
+## Results
 
-### Git hooks (one-time, per clone)
+### Query time vs n — d=2, k=10, 200 iterations
 
-Pre-commit hooks for auto-formatting are tracked in [`hooks/`](hooks/).
-After cloning, activate them with:
+![Query time vs n](assets/figures/bench_query_vs_n.png)
+
+| n | Exhaustive | KD-Tree | QuadTree | KD speedup | Quad speedup |
+|--:|--:|--:|--:|--:|--:|
+| 1 000 | ~13 μs | ~4 μs | ~4 μs | 3× | 3× |
+| 10 000 | ~52 μs | ~5 μs | ~5 μs | 10× | 10× |
+| 100 000 | ~390 μs | ~7 μs | ~7 μs | 56× | 56× |
+| 200 000 | ~648 μs | ~7.5 μs | ~7.0 μs | **86×** | **93×** |
+
+### Pruning efficiency & curse of dimensionality
+
+![Pruning & dimensionality](assets/figures/bench_nodes_and_dims.png)
+
+Nodes visited per query at n=200 000, d=2, uniform:
+
+| Algorithm | Nodes visited | % of dataset |
+|:--|--:|--:|
+| Exhaustive | 200 000 | 100% |
+| KD-Tree | ~53 | 0.03% |
+| QuadTree | ~31 | 0.02% |
+
+KD-Tree crossover with exhaustive occurs around **d=8–10**; at d=20+ it visits the
+entire dataset and is 3–4× slower than exhaustive due to tree traversal overhead.
+
+### Effect of distribution — n=200 000, d=2
+
+| Distribution | Exhaustive | KD-Tree | QuadTree |
+|:--|--:|--:|--:|
+| Uniform | ~645 μs | ~7.5 μs | ~7.0 μs |
+| Clustered | ~643 μs | ~7.3 μs | ~6.7 μs |
+| Skewed | ~652 μs | ~9.1 μs | ~6.1 μs |
+
+QuadTree is unaffected by skewed data — geometric midpoint splits isolate the dense
+corner quickly. KD-Tree degrades slightly as median splits become unbalanced.
+
+---
+
+## Reproducibility
+
+### Prerequisites
+
+| Tool | Purpose |
+|:--|:--|
+| CMake ≥ 3.20, Make | Build system |
+| GCC / Clang (C++20) | Compiler |
+| Python ≥ 3.12, `uv` | Data generation, visualisation, plotting |
 
 ```bash
-git config core.hooksPath hooks
+uv sync                          # install numpy, matplotlib, scienceplots, pandas
+uv tool install black isort      # needed for the pre-commit hook
+git config core.hooksPath hooks  # activate clang-format + black on commit
 ```
 
-The hook runs on every `git commit`:
-- **C/C++** (`.cc .cpp .cxx .hh .h .hpp`) — `clang-format` using [`.clang-format`](.clang-format)
-- **Python** (`.py`) — `isort` then `black`
+### Run the full sweep
 
-Required tools: `clang-format` (system), `black` and `isort` (see [Python environment](#python-environment) above).
+```bash
+./sweep.sh              # build both presets, generate data, run all experiments, plot
+./sweep.sh --skip-build # skip cmake if already built
+```
+
+`sweep.sh` runs in order:
+
+1. Builds `release` and `logging` CMake presets
+2. Generates all missing datasets via `data_gen.py`
+3. **Correctness check** — runs all three algos on a small dataset, diffs neighbour index columns
+4. **Experiment 1** — n-scaling (d=2, n: 500→200 000, all algos × all distributions)
+5. **Experiment 2** — d-scaling (uniform, n=50 000, d: 2→30, exhaustive vs. KD-Tree)
+6. Saves viz logs (n=200, d=2, logging build) for each algo × distribution
+7. Runs `benchmark_plot.py --save` → `assets/figures/`
+
+### Manual steps
+
+```bash
+# Single benchmark run
+./build/release/benchmark --data uniform_n50000_d2_s42.csv \
+    --algo kdtree --k 10 --iters 200
+
+# Generate a visualisation log and animate it
+./build/logging/benchmark --data uniform_n200_d2_s42.csv \
+    --algo quadtree --k 10 --iters 1
+uv run python source/visualize.py animate \
+    --log  assets/output/logs/quadtree_uniform_n200_d2_s42.log \
+    --data data/uniform_n200_d2_s42.csv \
+    --mode both --save
+
+# Replot from existing stats
+uv run python source/benchmark_plot.py --save
+```
+
+Stats CSVs accumulate in `assets/output/stats/<algo>_<dist>_stats.csv`,
+logs in `assets/output/logs/`, figures in `assets/figures/`.

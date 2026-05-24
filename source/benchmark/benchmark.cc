@@ -12,7 +12,9 @@
 #include "quad_tree/quad_tree.hh"
 
 static inline std::filesystem::path dataDir{DATA_DIR};
-static inline std::filesystem::path outDir{STATS_DIR};
+static inline std::filesystem::path outDir{OUT_DIR};
+static inline std::filesystem::path statsDir{outDir / "stats"};
+static inline std::filesystem::path logsDir{outDir / "logs"};
 
 static void printUsage()
 {
@@ -54,17 +56,22 @@ int main(int argc, char **argv)
 	uint64_t seed  = std::stoull(std::string(getArg(args, "--seed", "42")));
 	bool saveNeigh = hasFlag(args, "--save-neighbours");
 
-	// Derive output paths: STATS_DIR/<algo>_<stem>_stats.csv
 	std::filesystem::path dataPath = dataDir / dataFile;
-	std::string stem			   = dataPath.stem().string();
-	std::string prefix			   = std::string(algo) + "_" + stem;
+	std::string stem = dataPath.stem().string(); // e.g. clustered_n2000_d2_s42
+	std::string prefix = std::string(algo) + "_" + stem;
 
-	std::filesystem::create_directories(outDir);
-	auto statsPath = outDir / (prefix + "_stats.csv");
-	auto neighPath = outDir / (prefix + "_neighbours.csv");
+	// Distribution name is the first '_'-delimited token of the stem.
+	// Stats are appended to <algo>_<dist>_stats.csv so all (n,d,seed) runs
+	// accumulate in one table per (algo, distribution).
+	std::string dist	 = stem.substr(0, stem.find('_'));
+	std::string statsKey = std::string(algo) + "_" + dist;
+
+	std::filesystem::create_directories(statsDir);
+	auto statsPath = statsDir / (statsKey + "_stats.csv");
+	auto neighPath = statsDir / (prefix + "_neighbours.csv"); // per-run
 
 	if constexpr (Logger::kEnabled)
-		Logger::init(outDir / "logs" / (prefix + ".log"));
+		Logger::init(logsDir / (prefix + ".log")); // per-run
 
 	// Instantiate index
 	std::unique_ptr<NNSIndex> index;
@@ -83,7 +90,7 @@ int main(int argc, char **argv)
 	Benchmark bench(std::move(index), k, iters, noise, seed);
 	bench.run(loader.get());
 
-	bench.writeStats(statsPath, std::string(algo));
+	bench.writeStats(statsPath);
 	if (saveNeigh)
 		bench.writeNeighbours(neighPath);
 
