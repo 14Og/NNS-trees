@@ -1,6 +1,6 @@
 set(COMMON_DEFS
     DATA_DIR="${PROJECT_SOURCE_DIR}/data"
-    STATS_DIR="${PROJECT_SOURCE_DIR}/assets/output/stats"
+    OUT_DIR="${PROJECT_SOURCE_DIR}/assets/output"
 )
 
 add_executable(benchmark

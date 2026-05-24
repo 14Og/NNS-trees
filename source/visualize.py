@@ -133,8 +133,22 @@ class EvictEvent:
 
 @dataclass
 class PruneEvent:
-    idx: int  # root of pruned subtree
+    idx: int  # root of pruned subtree (KD-Tree)
     diff_sq: float  # squared distance to splitting hyperplane
+
+
+@dataclass
+class PruneBoxEvent:
+    dist_sq: float  # squared distance to cell box (QuadTree)
+    lo: np.ndarray  # shape (2,)
+    hi: np.ndarray  # shape (2,)
+
+
+@dataclass
+class QuadEvent:
+    depth: int
+    lo: np.ndarray  # shape (2,)
+    hi: np.ndarray  # shape (2,)
 
 
 @dataclass
@@ -186,6 +200,16 @@ def parse_log(
                 query_events.append(EvictEvent(int(parts[1]), float(parts[2])))
             elif kind == "PRUNE":
                 query_events.append(PruneEvent(int(parts[1]), float(parts[2])))
+            elif kind == "PRUNEBOX":
+                # QuadTree: PRUNEBOX distSq lo0 lo1 hi0 hi1
+                lo = np.array(parts[2:4], dtype=np.float32)
+                hi = np.array(parts[4:6], dtype=np.float32)
+                query_events.append(PruneBoxEvent(float(parts[1]), lo, hi))
+            elif kind == "QUAD":
+                # QuadTree: QUAD depth lo0 lo1 hi0 hi1
+                lo = np.array(parts[2:4], dtype=np.float32)
+                hi = np.array(parts[4:6], dtype=np.float32)
+                build_events.append(QuadEvent(int(parts[1]), lo, hi))
             elif kind == "RESULT":
                 query_events.append(ResultEvent(int(parts[1]), float(parts[2])))
 
@@ -240,33 +264,57 @@ def _save_or_show(fig_or_anim, output: Path | None, *, fps: int = 15) -> None:
 # ---------------------------------------------------------------------------
 
 _AXIS_COLORS = ["#e06c75", "#61afef"]  # axis 0 → red, axis 1 → blue
+_DEPTH_COLORS = ["#e06c75", "#61afef", "#55a868", "#c44e52", "#8172b3", "#937860"]
+
+
+def _draw_quad_split(
+    ax: plt.Axes,
+    e: QuadEvent,
+    *,
+    color,
+    alpha: float = 0.8,
+    lw: float = 1.0,
+) -> tuple:
+    """Draw the two midpoint lines (vertical + horizontal) for a QUAD event."""
+    mid_x = (e.lo[0] + e.hi[0]) * 0.5
+    mid_y = (e.lo[1] + e.hi[1]) * 0.5
+    lv = ax.plot([mid_x, mid_x], [e.lo[1], e.hi[1]], color=color, lw=lw, alpha=alpha)[0]
+    lh = ax.plot([e.lo[0], e.hi[0]], [mid_y, mid_y], color=color, lw=lw, alpha=alpha)[0]
+    return lv, lh
 
 
 def animate_build(
     pts: np.ndarray,
-    events: list[SplitEvent],
+    events: list,
     *,
-    title: str = "KD-Tree Build",
+    title: str = "Build",
     output: Path | None = None,
     interval: int = 150,
 ) -> None:
     """
-    Animate KD-tree partition lines appearing one by one.
-    Lines are coloured by split axis (red = axis 0, blue = axis 1)
-    so the alternating pattern is immediately visible.
+    Animate tree build — handles both SplitEvent (KD-Tree) and QuadEvent (QuadTree).
+
+    KD-Tree: one line per split, coloured by axis.
+    QuadTree: two midpoint lines per subdivision, coloured by depth.
     """
     if not events:
-        print("No SPLIT events in log — nothing to animate.")
+        print("No build events in log — nothing to animate.")
         return
+
+    is_quad = isinstance(events[0], QuadEvent)
 
     fig, ax = plt.subplots(figsize=(6, 6))
     _setup_ax(ax)
     ax.scatter(pts[:, 0], pts[:, 1], s=10, alpha=0.75, color="#555555", linewidths=0)
     title_artist = ax.set_title(title)
 
-    # Legend entries
-    for i, label in enumerate(["axis 0 (vertical)", "axis 1 (horizontal)"]):
-        ax.plot([], [], color=_AXIS_COLORS[i], lw=1.5, label=label)
+    if is_quad:
+        # Depth-coloured legend for QuadTree
+        for i, label in enumerate(["depth 0", "depth 1", "depth 2+"]):
+            ax.plot([], [], color=_DEPTH_COLORS[i], lw=1.5, label=label)
+    else:
+        for i, label in enumerate(["axis 0 (vertical)", "axis 1 (horizontal)"]):
+            ax.plot([], [], color=_AXIS_COLORS[i], lw=1.5, label=label)
     ax.legend(loc="upper right", fontsize=8)
 
     artists: list = []
@@ -274,12 +322,17 @@ def animate_build(
 
     def update(frame: int):
         e = events[frame]
-        color = _AXIS_COLORS[e.axis % len(_AXIS_COLORS)]
-        line = _draw_split_line(ax, pts, e, color=color)
-        dot = ax.plot(
-            pts[e.idx, 0], pts[e.idx, 1], "o", color=color, markersize=5, zorder=5
-        )[0]
-        artists.extend([line, dot])
+        if isinstance(e, QuadEvent):
+            color = _DEPTH_COLORS[e.depth % len(_DEPTH_COLORS)]
+            lv, lh = _draw_quad_split(ax, e, color=color)
+            artists.extend([lv, lh])
+        else:
+            color = _AXIS_COLORS[e.axis % len(_AXIS_COLORS)]
+            line = _draw_split_line(ax, pts, e, color=color)
+            dot = ax.plot(
+                pts[e.idx, 0], pts[e.idx, 1], "o", color=color, markersize=5, zorder=5
+            )[0]
+            artists.extend([line, dot])
         title_artist.set_text(f"{title}  [{frame + 1}/{total}]")
         return artists
 
@@ -329,23 +382,27 @@ def animate_query(
         print("No QUERY event in log — cannot determine query point.")
         return
 
-    # Index build events by point id for O(1) lookup during prune handling.
-    split_by_idx = {e.idx: e for e in build_events}
+    # Index KD-Tree split events by point id for O(1) prune lookup.
+    split_by_idx = {e.idx: e for e in build_events if isinstance(e, SplitEvent)}
 
     fig, ax = plt.subplots(figsize=(6, 6))
     _setup_ax(ax)
     title_artist = ax.set_title(title)
 
-    # Faint partition lines from build phase, coloured by axis
+    # Faint partition lines from build phase
     for e in build_events:
-        _draw_split_line(
-            ax,
-            pts,
-            e,
-            color=_AXIS_COLORS[e.axis % len(_AXIS_COLORS)],
-            alpha=0.18,
-            lw=0.7,
-        )
+        if isinstance(e, QuadEvent):
+            color = _DEPTH_COLORS[e.depth % len(_DEPTH_COLORS)]
+            _draw_quad_split(ax, e, color=color, alpha=0.18, lw=0.7)
+        else:
+            _draw_split_line(
+                ax,
+                pts,
+                e,
+                color=_AXIS_COLORS[e.axis % len(_AXIS_COLORS)],
+                alpha=0.18,
+                lw=0.7,
+            )
 
     # Point scatter — facecolors updated each frame
     colors = np.tile(_C_UNVISITED, (len(pts), 1))
@@ -377,19 +434,35 @@ def animate_query(
         elif isinstance(e, EvictEvent):
             colors[e.idx] = _C_EVICTED
         elif isinstance(e, PruneEvent):
+            # KD-Tree: look up the pruned subtree root's cell bounds
             split = split_by_idx.get(e.idx)
             if split is not None and split.lo.shape[0] >= 2:
                 from matplotlib.patches import Rectangle
 
-                rect = Rectangle(
-                    (split.lo[0], split.lo[1]),
-                    split.hi[0] - split.lo[0],
-                    split.hi[1] - split.lo[1],
+                ax.add_patch(
+                    Rectangle(
+                        (split.lo[0], split.lo[1]),
+                        split.hi[0] - split.lo[0],
+                        split.hi[1] - split.lo[1],
+                        color="orange",
+                        alpha=0.18,
+                        zorder=2,
+                    )
+                )
+        elif isinstance(e, PruneBoxEvent):
+            # QuadTree: cell bounds come directly from the event
+            from matplotlib.patches import Rectangle
+
+            ax.add_patch(
+                Rectangle(
+                    (e.lo[0], e.lo[1]),
+                    e.hi[0] - e.lo[0],
+                    e.hi[1] - e.lo[1],
                     color="orange",
                     alpha=0.18,
                     zorder=2,
                 )
-                ax.add_patch(rect)
+            )
         elif isinstance(e, ResultEvent):
             colors[e.idx] = _C_RESULT
 

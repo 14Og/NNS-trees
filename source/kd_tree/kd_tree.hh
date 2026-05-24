@@ -4,7 +4,6 @@
 #include "generic/functions.hh"
 #include "generic/index.hh"
 #include "generic/logger.hh"
-#include "kd_node.hh"
 
 #include <algorithm>
 #include <cmath>
@@ -63,10 +62,16 @@ public:
 	}
 
 private:
+	struct Node {
+		size_t pointId{0}; // point index in input array
+		std::unique_ptr<Node> left;
+		std::unique_ptr<Node> right;
+	};
+
 	struct Detail {
 		// Recursively builds the KD-tree over indices[lo, hi).
 		// nth_element partitions in O(n) per level → O(n log n) total.
-		static KDNodePtr build(const Points &aPoints,
+		static std::unique_ptr<Node> build(const Points &aPoints,
 			std::vector<size_t> &aIndices, size_t aLo, size_t aHi, int aDepth,
 			Point aLoBound, Point aHiBound)
 		{
@@ -81,11 +86,11 @@ private:
 					return aPoints[a][axis] < aPoints[b][axis];
 				});
 
-			auto node	   = std::make_unique<KDNode>();
+			auto node	   = std::make_unique<Node>();
 			node->pointId  = aIndices[mid];
 
 			float splitVal = aPoints[node->pointId][axis];
-			Logger::split(node->pointId, axis, aDepth, aLoBound, aHiBound);
+			Logger::splitKD(node->pointId, axis, aDepth, aLoBound, aHiBound);
 
 			Point leftHi  = aHiBound;
 			leftHi[axis]  = splitVal;
@@ -102,7 +107,7 @@ private:
 		// Traverses the tree maintaining a max-heap of the k best candidates
 		// (squared L2).  Prunes subtrees whose closest possible point exceeds
 		// the current worst heap entry.
-		static void query(const Points &aPoints, const KDNode *aNode,
+		static void query(const Points &aPoints, const Node *aNode,
 			const Point &aQ, size_t aK, int aDepth,
 			std::priority_queue<Neighbour> &aHeap, size_t &aNodesVisited)
 		{
@@ -129,10 +134,9 @@ private:
 			int axis   = aDepth % static_cast<int>(aPoints[0].size());
 			float diff = aQ[axis] - aPoints[aNode->pointId][axis];
 
-			const KDNode *near
+			const auto near
 				= diff <= 0 ? aNode->left.get() : aNode->right.get();
-			const KDNode *far
-				= diff <= 0 ? aNode->right.get() : aNode->left.get();
+			const auto far = diff <= 0 ? aNode->right.get() : aNode->left.get();
 
 			// Always visit the near side first.
 			query(aPoints, near, aQ, aK, aDepth + 1, aHeap, aNodesVisited);
@@ -142,12 +146,12 @@ private:
 			if (aHeap.size() < aK || diff * diff < aHeap.top().dist)
 				query(aPoints, far, aQ, aK, aDepth + 1, aHeap, aNodesVisited);
 			else if (far)
-				Logger::prune(far->pointId, diff * diff);
+				Logger::pruneKD(far->pointId, diff * diff);
 		}
 	};
 
 private:
-	KDNodePtr root;
+	std::unique_ptr<Node> root;
 };
 
 #endif /* SOURCE_KD_TREE_KD_TREE_HH_ */

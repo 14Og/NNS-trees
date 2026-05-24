@@ -42,15 +42,27 @@ struct Logger {
 	}
 
 	// Build events.
-	// Bounds are the cell's [lo, hi) box inherited from the parent split.
+	// KD-Tree: pivot point splits the cell along one axis.
 	// Format: SPLIT idx axis depth lo0 lo1 ... hi0 hi1 ...
-	static void split(size_t aIdx, int aAxis, int aDepth, const Point &aLoBound,
-		const Point &aHiBound)
+	static void splitKD(
+		size_t aIdx, int aAxis, int aDepth, const Point &aLo, const Point &aHi)
 	{
 		if constexpr (kEnabled) {
 			file() << "SPLIT " << aIdx << ' ' << aAxis << ' ' << aDepth;
-			for (float v : aLoBound) file() << ' ' << v;
-			for (float v : aHiBound) file() << ' ' << v;
+			for (float v : aLo) file() << ' ' << v;
+			for (float v : aHi) file() << ' ' << v;
+			file() << '\n';
+		}
+	}
+
+	// QuadTree: cell is subdivided at its geometric midpoint into quadrants.
+	// Format: QUAD depth lo0 lo1 hi0 hi1
+	static void splitQuad(int aDepth, const Point &aLo, const Point &aHi)
+	{
+		if constexpr (kEnabled) {
+			file() << "QUAD " << aDepth;
+			for (float v : aLo) file() << ' ' << v;
+			for (float v : aHi) file() << ' ' << v;
 			file() << '\n';
 		}
 	}
@@ -79,9 +91,22 @@ struct Logger {
 	{
 		log("EVICT ", aIdx, ' ', aDist);
 	}
-	static void prune(size_t aIdx, float aDiffSq)
+	// KD-Tree: far subtree pruned; idx is the subtree root's point.
+	static void pruneKD(size_t aIdx, float aDiffSq)
 	{
 		log("PRUNE ", aIdx, ' ', aDiffSq);
+	}
+
+	// QuadTree: cell pruned because box distance exceeds heap worst.
+	// Format: PRUNEBOX distSq lo0 lo1 hi0 hi1
+	static void pruneQuad(float aDistSq, const Point &aLo, const Point &aHi)
+	{
+		if constexpr (kEnabled) {
+			file() << "PRUNEBOX " << aDistSq;
+			for (float v : aLo) file() << ' ' << v;
+			for (float v : aHi) file() << ' ' << v;
+			file() << '\n';
+		}
 	}
 	static void result(size_t aIdx, float aDist)
 	{
